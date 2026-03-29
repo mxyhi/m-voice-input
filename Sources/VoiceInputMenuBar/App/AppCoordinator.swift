@@ -19,7 +19,7 @@ final class AppCoordinator {
         static let audioIdleTimeout: Duration = .milliseconds(900)
     }
 
-    private let logger = Logger(subsystem: "com.langhuam.mvoiceinput", category: "AppCoordinator")
+    private let logger = Logger(subsystem: "com.mxyhi.mvoiceinput", category: "AppCoordinator")
     private let diagnosticsDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"

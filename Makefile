@@ -1,6 +1,6 @@
 APP_NAME := MVoiceInput
 EXECUTABLE := VoiceInputMenuBar
-BUNDLE_ID := com.langhuam.mvoiceinput
+BUNDLE_ID := com.mxyhi.mvoiceinput
 DIST_DIR := dist
 APP_DIR := $(DIST_DIR)/$(APP_NAME).app
 CONTENTS_DIR := $(APP_DIR)/Contents
