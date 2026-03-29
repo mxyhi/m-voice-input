@@ -9,6 +9,7 @@ final class StatusBarController: NSObject {
     private let permissionsProvider: () -> PermissionSummary
     private let onLanguageSelected: (SupportedLanguage) -> Void
     private let onToggleLLM: (Bool) -> Void
+    private let onOpenPermissions: () -> Void
     private let onOpenSettings: () -> Void
     private let onQuit: () -> Void
 
@@ -20,6 +21,7 @@ final class StatusBarController: NSObject {
         permissionsProvider: @escaping () -> PermissionSummary,
         onLanguageSelected: @escaping (SupportedLanguage) -> Void,
         onToggleLLM: @escaping (Bool) -> Void,
+        onOpenPermissions: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
@@ -28,6 +30,7 @@ final class StatusBarController: NSObject {
         self.permissionsProvider = permissionsProvider
         self.onLanguageSelected = onLanguageSelected
         self.onToggleLLM = onToggleLLM
+        self.onOpenPermissions = onOpenPermissions
         self.onOpenSettings = onOpenSettings
         self.onQuit = onQuit
         super.init()
@@ -58,8 +61,8 @@ final class StatusBarController: NSObject {
         hintItem.isEnabled = false
         menu.addItem(hintItem)
 
-        let permissionItem = NSMenuItem(title: permissionSummary.rawValue, action: nil, keyEquivalent: "")
-        permissionItem.isEnabled = false
+        let permissionItem = NSMenuItem(title: permissionSummary.rawValue, action: #selector(handleOpenPermissions), keyEquivalent: "")
+        permissionItem.target = self
         menu.addItem(permissionItem)
 
         menu.addItem(.separator())
@@ -131,6 +134,11 @@ final class StatusBarController: NSObject {
     @objc
     private func handleLLMToggle(_ sender: NSMenuItem) {
         onToggleLLM(sender.state != .on)
+    }
+
+    @objc
+    private func handleOpenPermissions() {
+        onOpenPermissions()
     }
 
     @objc

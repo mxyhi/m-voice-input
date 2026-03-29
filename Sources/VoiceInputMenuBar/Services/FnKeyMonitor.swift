@@ -19,14 +19,17 @@ final class FnKeyMonitor {
         self.onRelease = onRelease
     }
 
-    func start() {
+    @discardableResult
+    func start(promptIfNeeded: Bool = true) -> Bool {
         guard eventTap == nil else {
-            return
+            return true
         }
 
         if !CGPreflightListenEventAccess() {
-            _ = CGRequestListenEventAccess()
-            return
+            if promptIfNeeded {
+                _ = CGRequestListenEventAccess()
+            }
+            return false
         }
 
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -47,7 +50,7 @@ final class FnKeyMonitor {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            return
+            return false
         }
 
         eventTap = tap
@@ -58,6 +61,25 @@ final class FnKeyMonitor {
         }
 
         CGEvent.tapEnable(tap: tap, enable: true)
+        return true
+    }
+
+    func stop() {
+        if let runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+        }
+        if let eventTap {
+            CFMachPortInvalidate(eventTap)
+        }
+        runLoopSource = nil
+        eventTap = nil
+        fnIsPressed = false
+    }
+
+    @discardableResult
+    func restart() -> Bool {
+        stop()
+        return start(promptIfNeeded: false)
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {

@@ -12,6 +12,7 @@ final class AppCoordinator {
     private let llmRefinementService = LLMRefinementService()
 
     private lazy var settingsWindowController = makeSettingsWindowController()
+    private lazy var permissionCenterWindowController = makePermissionCenterWindowController()
 
     private lazy var speechController = SpeechRecognitionController(
         onTranscript: { [weak self] transcript in
@@ -60,6 +61,9 @@ final class AppCoordinator {
         onToggleLLM: { [weak self] isEnabled in
             self?.toggleLLM(isEnabled)
         },
+        onOpenPermissions: { [weak self] in
+            self?.openPermissions()
+        },
         onOpenSettings: { [weak self] in
             self?.openSettings()
         },
@@ -77,10 +81,12 @@ final class AppCoordinator {
     }
 
     func start() {
-        permissionCoordinator.refreshAccessibility(prompt: false)
         statusBarController.refresh()
-        fnMonitor.start()
-        updatePermissionSummary()
+        _ = fnMonitor.start()
+        let snapshot = updatePermissionSummary()
+        if !snapshot.isReady {
+            permissionCenterWindowController.present()
+        }
     }
 
     private func selectLanguage(_ language: SupportedLanguage) {
@@ -97,6 +103,10 @@ final class AppCoordinator {
 
     private func openSettings() {
         settingsWindowController.present(settings: settings)
+    }
+
+    private func openPermissions() {
+        permissionCenterWindowController.present()
     }
 
     private func applySettings(_ updated: AppSettings) {
@@ -121,10 +131,72 @@ final class AppCoordinator {
         )
     }
 
-    private func updatePermissionSummary() {
-        let inputMonitoringGranted = fnMonitor.isActive
-        let summary = permissionCoordinator.makeSummary(inputMonitoringGranted: inputMonitoringGranted)
-        statusBarController.updatePermissionSummary(summary)
+    private func makePermissionCenterWindowController() -> PermissionCenterWindowController {
+        PermissionCenterWindowController(
+            snapshotProvider: { [weak self] in
+                self?.permissionCoordinator.snapshot() ?? PermissionSnapshot(
+                    inputMonitoringGranted: false,
+                    eventInjectionGranted: false,
+                    speechRecognitionGranted: false,
+                    microphoneGranted: false
+                )
+            },
+            diagnosticsProvider: { [weak self] in
+                self?.permissionCoordinator.diagnostics() ?? PermissionDiagnostics(
+                    bundleIdentifier: "unknown",
+                    bundlePath: "unknown",
+                    executablePath: "unknown",
+                    isInstalledInApplications: false
+                )
+            },
+            requestPermission: { [weak self] permission in
+                guard let self else {
+                    return PermissionSnapshot(
+                        inputMonitoringGranted: false,
+                        eventInjectionGranted: false,
+                        speechRecognitionGranted: false,
+                        microphoneGranted: false
+                    )
+                }
+
+                let snapshot = await self.permissionCoordinator.request(permission)
+                if permission == .inputMonitoring {
+                    _ = self.fnMonitor.restart()
+                }
+                return self.applyPermissionSnapshot(snapshot)
+            },
+            requestAllMissing: { [weak self] in
+                guard let self else {
+                    return PermissionSnapshot(
+                        inputMonitoringGranted: false,
+                        eventInjectionGranted: false,
+                        speechRecognitionGranted: false,
+                        microphoneGranted: false
+                    )
+                }
+
+                let snapshot = await self.permissionCoordinator.requestMissingPermissions()
+                _ = self.fnMonitor.restart()
+                return self.applyPermissionSnapshot(snapshot)
+            },
+            openSystemSettings: { [weak self] in
+                self?.permissionCoordinator.openSystemSettings()
+            },
+            onPermissionsChanged: { [weak self] snapshot in
+                _ = self?.applyPermissionSnapshot(snapshot)
+            }
+        )
+    }
+
+    @discardableResult
+    private func updatePermissionSummary() -> PermissionSnapshot {
+        applyPermissionSnapshot(permissionCoordinator.snapshot())
+    }
+
+    @discardableResult
+    private func applyPermissionSnapshot(_ snapshot: PermissionSnapshot) -> PermissionSnapshot {
+        statusBarController.updatePermissionSummary(snapshot.summary)
+        return snapshot
     }
 
     private func beginRecording() async {
@@ -132,13 +204,13 @@ final class AppCoordinator {
             return
         }
 
-        let speechGranted = await permissionCoordinator.requestSpeechRecognitionIfNeeded()
-        let microphoneGranted = await permissionCoordinator.requestMicrophoneIfNeeded()
-        permissionCoordinator.refreshAccessibility(prompt: false)
-        updatePermissionSummary()
+        let permissionSnapshot = await permissionCoordinator.requestMissingPermissions()
+        _ = fnMonitor.restart()
+        let refreshedSnapshot = updatePermissionSummary()
 
-        guard speechGranted, microphoneGranted else {
-            overlayController.show(message: "请先授予麦克风和语音识别权限", levels: .idle)
+        guard permissionSnapshot.isReady && refreshedSnapshot.isReady else {
+            permissionCenterWindowController.present()
+            overlayController.show(message: "请先完成权限授权", levels: .idle)
             overlayController.dismiss(after: 1.4)
             return
         }
