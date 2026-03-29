@@ -12,6 +12,14 @@ final class TextInjectionService {
             throw TextInjectionError.eventInjectionPermissionDenied
         }
 
+        guard let targetApplication = NSWorkspace.shared.frontmostApplication else {
+            throw TextInjectionError.frontmostApplicationUnavailable
+        }
+
+        guard targetApplication.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            throw TextInjectionError.frontmostApplicationIsSelf
+        }
+
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         let switchContext = inputSourceController.switchToASCIIIfNeeded()
 
@@ -20,7 +28,7 @@ final class TextInjectionService {
         let ownedChangeCount = pasteboard.changeCount
 
         try? await Task.sleep(for: .milliseconds(120))
-        postCommandV()
+        try postCommandV(to: targetApplication.processIdentifier)
         try? await Task.sleep(for: .milliseconds(120))
 
         inputSourceController.restoreIfOwned(switchContext)
@@ -29,29 +37,38 @@ final class TextInjectionService {
         snapshot.restoreIfOwned(to: pasteboard, ownedChangeCount: ownedChangeCount)
     }
 
-    private func postCommandV() {
+    private func postCommandV(to processIdentifier: pid_t) throws {
         guard
             let source = CGEventSource(stateID: .combinedSessionState),
             let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
             let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
         else {
-            return
+            throw TextInjectionError.failedToCreatePasteEvents
         }
 
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+        keyDown.postToPid(processIdentifier)
+        keyUp.postToPid(processIdentifier)
     }
 }
 
 enum TextInjectionError: LocalizedError {
     case eventInjectionPermissionDenied
+    case frontmostApplicationUnavailable
+    case frontmostApplicationIsSelf
+    case failedToCreatePasteEvents
 
     var errorDescription: String? {
         switch self {
         case .eventInjectionPermissionDenied:
             return "未获得事件注入权限"
+        case .frontmostApplicationUnavailable:
+            return "未找到可接收按键的前台应用"
+        case .frontmostApplicationIsSelf:
+            return "当前前台应用是 MVoiceInput，请先切回目标输入框"
+        case .failedToCreatePasteEvents:
+            return "无法创建粘贴按键事件"
         }
     }
 }

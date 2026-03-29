@@ -7,10 +7,12 @@ final class StatusBarController: NSObject {
     private let languageProvider: () -> SupportedLanguage
     private let llmEnabledProvider: () -> Bool
     private let permissionsProvider: () -> PermissionSummary
+    private let diagnosticsProvider: () -> [String]
     private let onLanguageSelected: (SupportedLanguage) -> Void
     private let onToggleLLM: (Bool) -> Void
     private let onOpenPermissions: () -> Void
     private let onOpenSettings: () -> Void
+    private let onCopyDiagnostics: () -> Void
     private let onQuit: () -> Void
 
     private var permissionSummary: PermissionSummary = .unknown
@@ -19,19 +21,23 @@ final class StatusBarController: NSObject {
         languageProvider: @escaping () -> SupportedLanguage,
         llmEnabledProvider: @escaping () -> Bool,
         permissionsProvider: @escaping () -> PermissionSummary,
+        diagnosticsProvider: @escaping () -> [String],
         onLanguageSelected: @escaping (SupportedLanguage) -> Void,
         onToggleLLM: @escaping (Bool) -> Void,
         onOpenPermissions: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
+        onCopyDiagnostics: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.languageProvider = languageProvider
         self.llmEnabledProvider = llmEnabledProvider
         self.permissionsProvider = permissionsProvider
+        self.diagnosticsProvider = diagnosticsProvider
         self.onLanguageSelected = onLanguageSelected
         self.onToggleLLM = onToggleLLM
         self.onOpenPermissions = onOpenPermissions
         self.onOpenSettings = onOpenSettings
+        self.onCopyDiagnostics = onCopyDiagnostics
         self.onQuit = onQuit
         super.init()
 
@@ -66,6 +72,7 @@ final class StatusBarController: NSObject {
         menu.addItem(permissionItem)
 
         menu.addItem(.separator())
+        menu.addItem(diagnosticsMenuItem())
         menu.addItem(languageMenuItem())
         menu.addItem(llmMenuItem())
         menu.addItem(.separator())
@@ -74,6 +81,25 @@ final class StatusBarController: NSObject {
         quitItem.target = self
         menu.addItem(quitItem)
         return menu
+    }
+
+    private func diagnosticsMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "运行诊断", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        for line in diagnosticsProvider() {
+            let diagnosticLine = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            diagnosticLine.isEnabled = false
+            submenu.addItem(diagnosticLine)
+        }
+
+        submenu.addItem(.separator())
+        let copyItem = NSMenuItem(title: "复制运行诊断", action: #selector(handleCopyDiagnostics), keyEquivalent: "")
+        copyItem.target = self
+        submenu.addItem(copyItem)
+
+        item.submenu = submenu
+        return item
     }
 
     private func languageMenuItem() -> NSMenuItem {
@@ -144,6 +170,11 @@ final class StatusBarController: NSObject {
     @objc
     private func handleOpenSettings() {
         onOpenSettings()
+    }
+
+    @objc
+    private func handleCopyDiagnostics() {
+        onCopyDiagnostics()
     }
 
     @objc
