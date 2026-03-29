@@ -4,6 +4,11 @@ import Speech
 import VoiceInputCore
 
 final class SpeechRecognitionController: @unchecked Sendable {
+    private enum UpdateRate {
+        static let waveformMinimumInterval: Duration = .milliseconds(33)
+        static let transcriptMinimumInterval: Duration = .milliseconds(80)
+    }
+
     private let onTranscript: @Sendable (String) -> Void
     private let onWaveform: @Sendable ([Double]) -> Void
 
@@ -16,6 +21,8 @@ final class SpeechRecognitionController: @unchecked Sendable {
     private var stopContinuation: CheckedContinuation<String, Never>?
     private var stopTimeoutTask: Task<Void, Never>?
     private var didRequestStop = false
+    private var lastWaveformDispatchAt: ContinuousClock.Instant?
+    private var lastTranscriptDispatchAt: ContinuousClock.Instant?
 
     init(
         onTranscript: @escaping @Sendable (String) -> Void,
@@ -31,6 +38,8 @@ final class SpeechRecognitionController: @unchecked Sendable {
         didRequestStop = false
         latestTranscript = ""
         waveformProcessor = WaveformLevelProcessor()
+        lastWaveformDispatchAt = nil
+        lastTranscriptDispatchAt = nil
 
         guard let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier)) else {
             throw SpeechRecognitionError.unsupportedLocale
@@ -50,7 +59,7 @@ final class SpeechRecognitionController: @unchecked Sendable {
 
             if let result {
                 latestTranscript = result.bestTranscription.formattedString
-                onTranscript(latestTranscript)
+                dispatchTranscriptIfNeeded(force: result.isFinal)
 
                 if result.isFinal {
                     finishStop(with: latestTranscript)
@@ -73,7 +82,7 @@ final class SpeechRecognitionController: @unchecked Sendable {
             recognitionRequest.append(buffer)
             let rms = Self.rmsValue(for: buffer)
             let levels = waveformProcessor.process(rms: Double(rms))
-            onWaveform(levels)
+            dispatchWaveformIfNeeded(levels)
         }
 
         audioEngine.prepare()
@@ -118,6 +127,26 @@ final class SpeechRecognitionController: @unchecked Sendable {
         audioEngine.inputNode.removeTap(onBus: 0)
         stopContinuation?.resume(returning: latestTranscript)
         stopContinuation = nil
+    }
+
+    private func dispatchTranscriptIfNeeded(force: Bool) {
+        let now = ContinuousClock.now
+        if !force, let lastTranscriptDispatchAt, now - lastTranscriptDispatchAt < UpdateRate.transcriptMinimumInterval {
+            return
+        }
+
+        lastTranscriptDispatchAt = now
+        onTranscript(latestTranscript)
+    }
+
+    private func dispatchWaveformIfNeeded(_ levels: [Double]) {
+        let now = ContinuousClock.now
+        if let lastWaveformDispatchAt, now - lastWaveformDispatchAt < UpdateRate.waveformMinimumInterval {
+            return
+        }
+
+        lastWaveformDispatchAt = now
+        onWaveform(levels)
     }
 
     private static func rmsValue(for buffer: AVAudioPCMBuffer) -> Float {
