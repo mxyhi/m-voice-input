@@ -98,6 +98,8 @@ final class SpeechRecognitionController: @unchecked Sendable {
         recognitionRequest?.endAudio()
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.reset()
+        recognitionTask?.finish()
 
         return await withCheckedContinuation { continuation in
             stopContinuation = continuation
@@ -114,6 +116,7 @@ final class SpeechRecognitionController: @unchecked Sendable {
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
+        speechRecognizer = nil
         stopContinuation?.resume(returning: transcript)
         stopContinuation = nil
     }
@@ -125,6 +128,8 @@ final class SpeechRecognitionController: @unchecked Sendable {
         recognitionRequest = nil
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.reset()
+        speechRecognizer = nil
         stopContinuation?.resume(returning: latestTranscript)
         stopContinuation = nil
     }
